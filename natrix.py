@@ -20,7 +20,7 @@ class natrixObj:
 		self.outputs = Outputs
 
 	def __repr__(self):
-		return "type = " + self.objType + ", GUID: "+ self.guid 
+		return "type = " + self.objType + ", GUID: "+ self.guid + Inputs.toString()
 
 def makeGHObject(obj):
 
@@ -54,7 +54,6 @@ def printGHObject(obj):
 	if( objcontainer.find(".//chunk[@name='param_output']") is not None):
 		for outparam in objcontainer.findall(".//chunk[@name='param_output']"):
 			print "----- OUTPUT GUID:", getattr(outparam.find(".//item[@name='InstanceGuid']"), "text", "None")
-
 
 
 
