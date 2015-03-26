@@ -11,12 +11,14 @@ import matplotlib.pyplot as plt
 
 class natrixObj(object):
 
-	def __init__(self, ObjType, GUID, InstanceGuid, Inputs, Outputs):
+	def __init__(self, ObjType, GUID, InstanceGuid, Inputs, Outputs, Value):
 		self.objType = ObjType
 		self.guid = GUID
 		self.instanceGuid = InstanceGuid
 		self.inputs = Inputs
 		self.outputs = Outputs
+		if Value is not None:
+			self.value = Value
 
 
 	def __repr__(self):
@@ -31,9 +33,14 @@ OUTPUTS: ' + ', '.join(self.outputs) + '\n'
 		d = { 'type': self.objType,
 				'GUID': self.guid,
 				}
+		d = self.__dict__
 		if(internal):
 			d['internal'] = True
 		return d
+
+def pythonizeUuid(uuid):
+	return 'p_' + uuid.replace("-", "_")
+
 
 def makeNatrixObjFromXml(obj):
 
@@ -55,13 +62,18 @@ def makeNatrixObjFromXml(obj):
 	Outputs += [getattr(outparam.find(".//item[@name='InstanceGuid']"), "text", "None") for outparam in objcontainer.findall(".//chunk[@name='OutputParam']")]
 	Outputs = list(set(Outputs))
 
-	nobj = natrixObj(objType, GUID, InstanceGuid, Inputs, Outputs)
+	objValue = getattr(objcontainer.find(".//item[@name='Value']"), "text", None)
+	if objValue is None:
+		objValue = getattr(objcontainer.find(".//item[@name='UserText']"), "text", None)
+
+
+	nobj = natrixObj(objType, GUID, InstanceGuid, Inputs, Outputs, objValue)
 
 	return nobj
 	
 
 
-def parseXMLAsGraph(xmlfile):
+def parseXMLAsNobjs(xmlfile):
 
 	#parse xml file
 	tree = etree.parse(xmlfile)
@@ -74,10 +86,13 @@ def parseXMLAsGraph(xmlfile):
 	print len(nobjs)
 	print defObjCount 
 
+	return nobjs
+
+
+def nobjsToGraph(nobjs):
+
 	# assemble directed acyclic graph
 	G = nx.DiGraph()
-
-	print nobjs
 
 	for nobj in nobjs:
 		for inp in nobj.inputs:
@@ -101,31 +116,52 @@ def parseXMLAsGraph(xmlfile):
 	plt.tight_layout()
 	plt.savefig("Graph.png", format="PNG")
 
+	return G
+
+def objTypeToGhcomp(ot):
+	if ot == 'Data':
+		return "identity"
+	else:
+		return "ghcomp." + ot
+
+
+def graphToPython(G, nobjs):
+
 	for node in nx.topological_sort(G):
 		print "====="
 		for neigh in G.neighbors(node):
 			print node, "->", neigh
 			print G.get_edge_data(node, neigh)
 
+	print "#=========="
+	print "import ghpythonlib.components as ghcomp"
+	print "def identity(arg):\n\
+	return arg"
+
+
 	for node in nx.topological_sort(G):
-		print "====="
+		print "#====="
 		if(len(G.in_edges(node)) == 0):
-			print node, ": has input"
+			print pythonizeUuid(node), "=",
+			print map(lambda z: getattr(z, 'value', None), filter(lambda x: x.instanceGuid == node, nobjs))[0]
 		else:
-			print node, "= " ,
+			print pythonizeUuid(node), "=" ,
 		
 			if reduce(lambda a, b: a and b, ['internal' in edge[2] for edge in  G.in_edges(node, data=True)]):
-				print G.in_edges(node, data=True)[0][0]
+				print pythonizeUuid(G.in_edges(node, data=True)[0][0])
 			else: 
-				print G.in_edges(node, data=True)[0][2]['type'],
+				print objTypeToGhcomp(G.in_edges(node, data=True)[0][2]['objType']),
 				print "( ",
-				print ' , '.join([edge[0] for edge in G.in_edges(node, data=True)]),
+				print ' , '.join(map(pythonizeUuid, [edge[0] for edge in G.in_edges(node, data=True)])),
 				print ") "
+	print 'print', pythonizeUuid(nx.topological_sort(G)[-1])
 
 
 def main():
 
-	parseXMLAsGraph("ghxs/example1.ghx")
+	nobjs = parseXMLAsNobjs("ghxs/example2.ghx")
+	Graph = nobjsToGraph(nobjs)
+	graphToPython(Graph, nobjs)
 
 if __name__ == "__main__":
 	main()
